@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-apply-patch
+      name: '@fonlan/dsh-apply-patch'
