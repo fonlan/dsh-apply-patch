@@ -1,4 +1,4 @@
-# @fonlan/dsh-apply-patch
+# dsh-apply-patch
 
 DSH plugin: inject a **codex-style `apply_patch` tool** for models.
 
@@ -16,11 +16,43 @@ GPT-family models were trained heavily on OpenAI Codex's `apply_patch` tool, so 
 
 ## Install
 
+Install into a profile (default `web`) with the `dsh plugin` command:
+
+### From npm
+
 ```bash
-# inside the DSH web profile
-dsh install @fonlan/dsh-apply-patch
-# local development
-pnpm install && pnpm build
+dsh plugin --profile web add @fonlan/dsh-apply-patch
+```
+
+### From GitHub
+
+```bash
+# default branch (the repo ships a prepare build script; pnpm builds it)
+dsh plugin --profile web add github:fonlan/dsh-apply-patch
+
+# specific release tag
+dsh plugin --profile web add github:fonlan/dsh-apply-patch#v0.1.0
+```
+
+### Local source link (development)
+
+```bash
+pnpm build
+dsh plugin --profile web add .
+```
+
+After install the plugin mounts through `cordis.patch.yml`: the host registers the `apply_patch` tool and the `dsh-apply-patch` settings namespace; the web client registers the `settings.plugin.item` settings card (设置 → 插件 → 插件配置 → Apply Patch). **Restart the dsh web process after install.**
+
+### Uninstall
+
+```bash
+dsh plugin --profile web remove @fonlan/dsh-apply-patch
+```
+
+### Upgrade
+
+```bash
+dsh plugin --profile web update @fonlan/dsh-apply-patch
 ```
 
 ## Usage

@@ -18,7 +18,7 @@ interface Slots {
 }
 
 /** Services required before mounting (provided by the client runtime). */
-export const inject = ['slots', 'locale', 'settingsScope']
+export const inject = ['slots', 'locale', 'settingsScope', 'connection', 'remote']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {

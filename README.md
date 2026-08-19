@@ -1,4 +1,4 @@
-# @fonlan/dsh-apply-patch
+# dsh-apply-patch
 
 DSH 插件：为模型注入 **codex 风格的 `apply_patch` 工具**。
 
@@ -16,11 +16,43 @@ GPT 系列模型在训练时大量使用 OpenAI Codex 的 `apply_patch` 工具�
 
 ## 安装
 
+通过 `dsh plugin` 命令安装到目标 profile（默认 `web`）：
+
+### 从 npm 安装
+
 ```bash
-# 在 DSH web profile 下
-dsh install @fonlan/dsh-apply-patch
-# 或本地开发
-pnpm install && pnpm build
+dsh plugin --profile web add @fonlan/dsh-apply-patch
+```
+
+### 从 GitHub 安装
+
+```bash
+# 默认分支（仓库带 prepare 构建脚本，pnpm 会自动构建）
+dsh plugin --profile web add github:fonlan/dsh-apply-patch
+
+# 指定 release tag
+dsh plugin --profile web add github:fonlan/dsh-apply-patch#v0.1.0
+```
+
+### 本地源码链接安装（开发）
+
+```bash
+pnpm build
+dsh plugin --profile web add .
+```
+
+安装后插件通过 `cordis.patch.yml` 自动挂载：服务端注册 `apply_patch` 工具与 `dsh-apply-patch` 设置命名空间，web 端注册 `settings.plugin.item` 设置卡片（设置 → 插件 → 插件配置 → Apply Patch）。**安装后需要重启 dsh web 进程生效**。
+
+### 删除插件
+
+```bash
+dsh plugin --profile web remove @fonlan/dsh-apply-patch
+```
+
+### 升级
+
+```bash
+dsh plugin --profile web update @fonlan/dsh-apply-patch
 ```
 
 ## 使用

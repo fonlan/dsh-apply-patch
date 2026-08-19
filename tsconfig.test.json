@@ -10,9 +10,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": false,
-    "outDir": "lib-test",
-    "rootDir": ".",
+    "noEmit": true,
     "types": [
       "node"
     ]

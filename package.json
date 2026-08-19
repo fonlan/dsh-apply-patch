@@ -46,7 +46,7 @@
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "watch": "tsdown --watch",
-    "test": "rm -rf lib-test && tsc -p tsconfig.test.json && node --test --test-force-exit 'lib-test/test/*.test.js'"
+    "test": "tsx --test test/*.test.ts"
   },
   "dsh": {
     "bundle": {
@@ -58,7 +58,9 @@
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-slots",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-remotes"
       ]
     }
   },
@@ -82,7 +84,9 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.7",
     "@deepseek-ai/dsh-bash-sandbox": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.7",
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.7",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.7",
@@ -107,6 +111,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "^0.22.14",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.0"
   },
   "packageManager": "pnpm@11.21.0"
