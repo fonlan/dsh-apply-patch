@@ -14,7 +14,8 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import { SettingsProvider, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
@@ -53,6 +54,9 @@ async function boot(workspace: string, mode: string, userDoc: Record<string, unk
   await ctx.plugin(SandboxBashExecutor, {})
   await ctx.plugin(ToolRuntime, {})
   await ctx.plugin(SystemPrompt, {})
+  // alpha.2: SandboxPolicyService registers a sandboxMode session projection,
+  // so the projection registry service must exist before it activates.
+  await ctx.plugin(SessionProjectionRegistry, {})
   await ctx.plugin(MemorySettings, { doc: { 'dsh-apply-patch': userDoc } })
   await ctx.plugin(applyObservationPolicy)
   await ctx.plugin({
@@ -105,7 +109,7 @@ describe('plugin apply', () => {
   it('registers the settings namespace', async () => {
     const ctx = await boot(workspace, 'workspace-write', {})
     const describe = (ctx.get('settings') as SettingsProvider).describe()
-    const ns = describe.find((d) => d.ns === settingsNamespace('dsh-apply-patch'))
+    const ns = describe.find((d) => d.ns === 'dsh-apply-patch')
     assert.ok(ns !== undefined, 'dsh-apply-patch namespace served')
     assert.equal((ns.value as { mode: string }).mode, 'gpt-only')
 
