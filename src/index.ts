@@ -9,7 +9,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import {
   APPLY_PATCH_SETTINGS_NS,
   APPLY_PATCH_SETTINGS_BASE,
@@ -41,7 +41,7 @@ function sessionCwd(exec: { agent?: { session?: { header?: { cwd?: string } } } 
 export function apply(ctx: Context): void {
   // 1. Settings namespace: the one dropdown (off / gpt-only / all).
   const scope = ctx.settings.register(
-    settingsNamespace(APPLY_PATCH_SETTINGS_NS),
+    APPLY_PATCH_SETTINGS_NS,
     ApplyPatchSettingsSchema,
     {
       base: APPLY_PATCH_SETTINGS_BASE,
