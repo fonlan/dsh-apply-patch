@@ -130,6 +130,7 @@ function parseHunks(body: string): PatchHunk[] {
   let current: PatchHunk | null = null
   let currentChunk: UpdateChunk | null = null
   let seenAnyHunk = false
+  let sawEnvironmentId = false
 
   const closeChunk = () => {
     if (currentChunk !== null) {
@@ -141,16 +142,49 @@ function parseHunks(body: string): PatchHunk[] {
     }
   }
 
+  const startUpdateChunk = (changeContext: string | null): UpdateChunk => {
+    const chunk: UpdateChunk = {
+      changeContext,
+      oldLines: [],
+      newLines: [],
+      isEndOfFile: false,
+    }
+    currentChunk = chunk
+    return chunk
+  }
+
+  // TypeScript does not track mutation of a captured variable through helper
+  // closures, so expose the current parser state through this typed accessor.
+  const activeChunk = (): UpdateChunk | null => currentChunk
+
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]
-    const line = raw.trimEnd()
-    if (line === '') continue
+    // split('\n') leaves one terminal CR on every CRLF physical line. Codex
+    // removes that line terminator before examining patch syntax or contents.
+    const raw = lines[i].endsWith('\r') ? lines[i].slice(0, -1) : lines[i]
+    const trimmed = raw.trim()
+    // Patch headers tolerate surrounding whitespace, but an indented marker in
+    // an update hunk is a literal context line, as in Codex's parser.
+    const canBeHeader = current?.kind !== 'update' || raw === raw.trimStart()
 
-    if (line === BEGIN_PATCH_MARKER || line === END_PATCH_MARKER) continue
+    if (canBeHeader && (trimmed === BEGIN_PATCH_MARKER || trimmed === END_PATCH_MARKER)) continue
+    // Blank separators outside update hunks carry no patch data. This also
+    // accepts the common blank line between an Add/Delete body and End Patch.
+    if (current?.kind !== 'update' && trimmed === '') continue
 
-    if (line.startsWith(ADD_FILE_MARKER)) {
+    if (canBeHeader && current === null && trimmed.startsWith('*** Environment ID:')) {
+      if (sawEnvironmentId) {
+        throw new PatchParseError('apply_patch environment_id cannot be specified more than once')
+      }
+      if (trimmed.slice('*** Environment ID:'.length).trim() === '') {
+        throw new PatchParseError('apply_patch environment_id cannot be empty')
+      }
+      sawEnvironmentId = true
+      continue
+    }
+
+    if (canBeHeader && trimmed.startsWith(ADD_FILE_MARKER)) {
       closeChunk()
-      const path = line.slice(ADD_FILE_MARKER.length).trim()
+      const path = trimmed.slice(ADD_FILE_MARKER.length).trim()
       if (path === '') {
         throw new PatchParseError(`Invalid hunk on line ${i + 1}: empty path for Add File`)
       }
@@ -160,9 +194,9 @@ function parseHunks(body: string): PatchHunk[] {
       continue
     }
 
-    if (line.startsWith(DELETE_FILE_MARKER)) {
+    if (canBeHeader && trimmed.startsWith(DELETE_FILE_MARKER)) {
       closeChunk()
-      const path = line.slice(DELETE_FILE_MARKER.length).trim()
+      const path = trimmed.slice(DELETE_FILE_MARKER.length).trim()
       if (path === '') {
         throw new PatchParseError(`Invalid hunk on line ${i + 1}: empty path for Delete File`)
       }
@@ -172,9 +206,9 @@ function parseHunks(body: string): PatchHunk[] {
       continue
     }
 
-    if (line.startsWith(UPDATE_FILE_MARKER)) {
+    if (canBeHeader && trimmed.startsWith(UPDATE_FILE_MARKER)) {
       closeChunk()
-      const path = line.slice(UPDATE_FILE_MARKER.length).trim()
+      const path = trimmed.slice(UPDATE_FILE_MARKER.length).trim()
       if (path === '') {
         throw new PatchParseError(`Invalid hunk on line ${i + 1}: empty path for Update File`)
       }
@@ -185,55 +219,66 @@ function parseHunks(body: string): PatchHunk[] {
     }
 
     if (current === null) {
+      if (trimmed === '') continue
       throw new PatchParseError(`Invalid patch: content before any file hunk on line ${i + 1}`)
     }
 
     if (current.kind === 'update') {
-      if (line.startsWith(MOVE_TO_MARKER)) {
+      // Deliberately preserve source-line trailing whitespace. It is data in
+      // +/-/space lines, while markers and @@ labels follow Codex's trim_end
+      // treatment so marker whitespace remains lenient.
+      const updateLine = raw.trimEnd()
+      if (updateLine.startsWith(MOVE_TO_MARKER)) {
         closeChunk()
         if (current.movePath !== null) {
           throw new PatchParseError(`Invalid hunk on line ${i + 1}: duplicate Move to`)
         }
-        current.movePath = line.slice(MOVE_TO_MARKER.length).trim()
+        const movePath = updateLine.slice(MOVE_TO_MARKER.length).trim()
+        if (movePath === '') {
+          throw new PatchParseError(`Invalid hunk on line ${i + 1}: empty path for Move to`)
+        }
+        current.movePath = movePath
         continue
       }
 
-      if (line === EOF_MARKER) {
-        if (currentChunk === null) {
+      if (updateLine === EOF_MARKER) {
+        const chunk = activeChunk()
+        if (chunk === null || (chunk.oldLines.length === 0 && chunk.newLines.length === 0)) {
           throw new PatchParseError(`Invalid hunk on line ${i + 1}: End of File without a chunk`)
         }
-        currentChunk.isEndOfFile = true
+        chunk.isEndOfFile = true
         continue
       }
 
-      if (line === EMPTY_CHANGE_CONTEXT_MARKER || line.startsWith(CHANGE_CONTEXT_MARKER)) {
+      if (updateLine === EMPTY_CHANGE_CONTEXT_MARKER || updateLine.startsWith(CHANGE_CONTEXT_MARKER)) {
         closeChunk()
-        const ctx = line === EMPTY_CHANGE_CONTEXT_MARKER
-          ? ''
-          : line.slice(CHANGE_CONTEXT_MARKER.length)
-        currentChunk = {
-          changeContext: ctx === '' ? null : ctx,
-          oldLines: [],
-          newLines: [],
-          isEndOfFile: false,
-        }
+        const ctx = updateLine === EMPTY_CHANGE_CONTEXT_MARKER
+          ? null
+          : updateLine.slice(CHANGE_CONTEXT_MARKER.length)
+        startUpdateChunk(ctx === '' ? null : ctx)
         continue
       }
 
-      const marker = line[0]
-      const content = line.slice(1)
+      if (raw === '') {
+        // `parsePatch()` trims the outer document, so an empty line immediately
+        // before End Patch is only a separator. Elsewhere Codex treats it as
+        // empty context; after an EOF marker it is ignored.
+        const nextNonEmpty = lines.slice(i + 1).find((candidate) => candidate.trim() !== '')?.trim()
+        const chunk = activeChunk()
+        if (chunk?.isEndOfFile || nextNonEmpty === END_PATCH_MARKER) continue
+        const targetChunk = chunk ?? startUpdateChunk(null)
+        targetChunk.oldLines.push('')
+        targetChunk.newLines.push('')
+        continue
+      }
+
+      const marker = raw[0]
+      const content = raw.slice(1)
       if (marker === '+' || marker === '-' || marker === ' ') {
-        if (currentChunk === null) {
-          // codex allows the first chunk to start without an explicit @@ header
-          currentChunk = {
-            changeContext: null,
-            oldLines: [],
-            newLines: [],
-            isEndOfFile: false,
-          }
-        }
-        if (marker === '+' || marker === ' ') currentChunk.newLines.push(content)
-        if (marker === '-' || marker === ' ') currentChunk.oldLines.push(content)
+        // Codex allows the first chunk to start without an explicit @@ header.
+        const chunk = activeChunk() ?? startUpdateChunk(null)
+        if (marker === '+' || marker === ' ') chunk.newLines.push(content)
+        if (marker === '-' || marker === ' ') chunk.oldLines.push(content)
         continue
       }
 
@@ -241,10 +286,10 @@ function parseHunks(body: string): PatchHunk[] {
     }
 
     if (current.kind === 'add') {
-      if (!line.startsWith('+')) {
+      if (!raw.startsWith('+')) {
         throw new PatchParseError(`Invalid hunk on line ${i + 1}: Add File content must start with '+'`)
       }
-      current.contents += line.slice(1) + '\n'
+      current.contents += raw.slice(1) + '\n'
       continue
     }
 
@@ -256,13 +301,16 @@ function parseHunks(body: string): PatchHunk[] {
   closeChunk()
 
   if (!seenAnyHunk) {
-    // codex: an empty patch (just begin/end) is valid but applies nothing
+    // Codex: an empty patch (just begin/end) is valid but applies nothing.
     return []
   }
 
   for (const hunk of hunks) {
     if (hunk.kind === 'update' && hunk.chunks.length === 0) {
       throw new PatchParseError(`Update file hunk for path '${hunk.path}' is empty`)
+    }
+    if (hunk.kind === 'update' && hunk.chunks.some((chunk) => chunk.oldLines.length === 0 && chunk.newLines.length === 0)) {
+      throw new PatchParseError(`Update hunk for path '${hunk.path}' does not contain any lines`)
     }
   }
 

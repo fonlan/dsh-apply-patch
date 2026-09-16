@@ -133,6 +133,80 @@ describe('parsePatch update hunks', () => {
     }])
   })
 
+  it('preserves trailing whitespace in changed and context lines', () => {
+    const hunks = parsePatch(wrap('*** Update File: file.txt\n@@\n-keep two spaces  \n+replace two spaces  \n context  '))
+    assert.deepEqual(hunks, [{
+      kind: 'update',
+      path: 'file.txt',
+      movePath: null,
+      chunks: [{
+        changeContext: null,
+        oldLines: ['keep two spaces  ', 'context  '],
+        newLines: ['replace two spaces  ', 'context  '],
+        isEndOfFile: false,
+      }],
+    }])
+  })
+
+  it('treats a bare empty update line as empty context', () => {
+    const hunks = parsePatch(wrap('*** Update File: file.txt\n@@\n before\n\n after'))
+    assert.deepEqual(hunks, [{
+      kind: 'update',
+      path: 'file.txt',
+      movePath: null,
+      chunks: [{
+        changeContext: null,
+        oldLines: ['before', '', 'after'],
+        newLines: ['before', '', 'after'],
+        isEndOfFile: false,
+      }],
+    }])
+  })
+
+  it('keeps indented hunk-looking text as a context line', () => {
+    const hunks = parsePatch(wrap('*** Update File: file.txt\n@@\n-old\n+new\n *** Update File: literal text'))
+    assert.deepEqual(hunks[0], {
+      kind: 'update',
+      path: 'file.txt',
+      movePath: null,
+      chunks: [{
+        changeContext: null,
+        oldLines: ['old', '*** Update File: literal text'],
+        newLines: ['new', '*** Update File: literal text'],
+        isEndOfFile: false,
+      }],
+    })
+  })
+
+  it('accepts CRLF patches with a bare empty context line', () => {
+    const hunks = parsePatch([
+      '*** Begin Patch',
+      '*** Update File: note.txt',
+      '@@',
+      ' context before',
+      '',
+      ' context after',
+      '+added',
+      '*** End Patch',
+    ].join('\r\n'))
+    assert.deepEqual(hunks, [{
+      kind: 'update',
+      path: 'note.txt',
+      movePath: null,
+      chunks: [{
+        changeContext: null,
+        oldLines: ['context before', '', 'context after'],
+        newLines: ['context before', '', 'context after', 'added'],
+        isEndOfFile: false,
+      }],
+    }])
+  })
+
+  it('accepts Codex environment IDs before the first hunk', () => {
+    const hunks = parsePatch(wrap('*** Environment ID: remote\n*** Add File: file.txt\n+ok'))
+    assert.deepEqual(hunks, [{ kind: 'add', path: 'file.txt', contents: 'ok\n' }])
+  })
+
   it('parses the End of File marker', () => {
     const hunks = parsePatch(wrap('*** Update File: file.txt\n@@\n+quux\n*** End of File'))
     assert.deepEqual(hunks, [{
