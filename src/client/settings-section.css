@@ -1,63 +1,47 @@
-.ap-settings-card {
-  list-style: none;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-2, transparent);
-  overflow: hidden;
-}
+/*
+ * Styles for the Apply Patch settings page.
+ *
+ * The page occupies the settings panel's content column: a header (title plus
+ * a one-line summary) over the always-visible body — one injection-scope
+ * dropdown. Inner controls follow the built-in settings language.
+ */
 
-.ap-settings-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-}
+/* page layout */
 
-.ap-settings-head:hover {
-  background: var(--dsw-alias-bg-hover, rgba(128, 128, 128, 0.08));
-}
-
-.ap-settings-head-text {
-  flex: 1;
-  min-width: 0;
+.ap-page {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 16px;
+  max-width: 720px;
 }
 
-.ap-settings-title {
-  font-size: 13px;
+.ap-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ap-page-title {
+  margin: 0;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.4;
   color: var(--dsw-alias-label-primary, inherit);
 }
 
-.ap-settings-sub {
-  font-size: 12px;
+.ap-page-sub {
+  margin: 0;
+  font-size: 13px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-secondary, rgba(128, 128, 128, 0.8));
+  color: var(--dsw-alias-label-tertiary, rgba(128, 128, 128, 0.7));
 }
 
-.ap-settings-chevron {
-  display: inline-flex;
-  transition: transform 0.15s ease;
-  color: var(--dsw-alias-label-tertiary, rgba(128, 128, 128, 0.6));
-}
+/* body layout */
 
-.ap-settings-chevron[data-open=''] {
-  transform: rotate(180deg);
-}
-
-.ap-settings-body {
-  padding: 4px 14px 14px;
-  border-top: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+.ap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .ap-settings-readonly {
