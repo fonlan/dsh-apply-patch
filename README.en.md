@@ -12,7 +12,7 @@ GPT-family models were trained heavily on OpenAI Codex's `apply_patch` tool, so 
   - **Off** — never inject `apply_patch`
   - **GPT models only** (default) — inject only for models whose id starts with `gpt-`
   - **All models** — inject for every model
-- **Settings card**: 设置 → 插件 → 插件配置 → Apply Patch, applies live.
+- **Settings card**: 设置 → 插件 → 插件配置 → Apply Patch; the choice is written to this entry's config and the entry restarts with it.
 
 ## Install
 
@@ -41,7 +41,7 @@ pnpm build
 dsh plugin --profile web add .
 ```
 
-After install the plugin mounts through `cordis.patch.yml`: the host registers the `apply_patch` tool and the `dsh-apply-patch` settings namespace; the web client registers the `settings.plugin.item` settings card (设置 → 插件 → 插件配置 → Apply Patch). **Restart the dsh web process after install.**
+After install the plugin mounts through `cordis.patch.yml`: the host registers the `apply_patch` tool and declares the injection scope through its `Config` schema (dsh ≥ 0.1.7 derives the settings form from it and stores the choice in this entry's config); the web client registers the `settings.section` settings page (设置 → 插件 → 插件配置 → Apply Patch). **Restart the dsh web process after install.**
 
 ### Uninstall
 
@@ -93,7 +93,7 @@ D /path/to/old.py
 
 ## How it works
 
-1. `ctx.settings.register` registers the `dsh-apply-patch` namespace (single `mode` field).
+1. The plugin `Config` schema declares the single `mode` field (marked `volatile()`, so `apply()` receives a live handle it re-reads on every tool-list assembly); dsh ≥ 0.1.7 derives the settings form from that schema and stores the choice in this entry's config.
 2. `ctx.tools.register` registers the `apply_patch` tool via `defineTool`.
 3. Hooks the `system-prompt/assemble` waterfall: when the per-step tool list is assembled, it keeps `apply_patch` only when `mode` + the session's current model allow it.
 4. Model resolution prefers `variables.model` from the assembled prompt (the authoritative value injected by the model-selection layer — zero lag on model switch), falling back to the `agent/request` captured route, the session's logged request header, then `agentDefaultModel`.

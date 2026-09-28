@@ -14,7 +14,6 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { SandboxedFileSystem } from '@deepseek-ai/dsh-fs-sandbox'
@@ -24,28 +23,12 @@ import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
 import { apply as applyObservationPolicy } from '@deepseek-ai/dsh-fs-observation-policy'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { apply as applyPlugin } from '../src/index.js'
+import { apply as applyPlugin, readMode } from '../src/index.js'
+import { ApplyPatchSettingsSchema } from '../src/host/settings-schema.js'
 import { APPLY_PATCH_TOOL_NAME, shouldOfferTool } from '../src/host/injector.js'
 
-/** In-memory settings provider (subclass of the real base, loaded as a plugin). */
-class MemorySettings extends SettingsProvider {
-  static Config = undefined as never
-  doc: Record<string, unknown>
-  readonly writable = true
-  constructor(ctx: Context, config: { doc: Record<string, unknown> }) {
-    super(ctx)
-    this.doc = config.doc
-  }
-  async load(): Promise<Record<string, unknown>> {
-    return this.doc
-  }
-  protected async persist(_ns: Parameters<SettingsProvider['persist']>[0], section: Record<string, unknown>): Promise<void> {
-    this.doc = { ...this.doc, ...section }
-  }
-}
-
-/** Boot a composed context with the given sandbox mode + user settings doc. */
-async function boot(workspace: string, mode: string, userDoc: Record<string, unknown>) {
+/** Boot a composed context with the given sandbox mode + entry config. */
+async function boot(workspace: string, mode: string, entryConfig: Record<string, unknown>) {
   const ctx = new Context()
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(LocalSandboxProvider, {})
@@ -57,13 +40,15 @@ async function boot(workspace: string, mode: string, userDoc: Record<string, unk
   // alpha.2: SandboxPolicyService registers a sandboxMode session projection,
   // so the projection registry service must exist before it activates.
   await ctx.plugin(SessionProjectionRegistry, {})
-  await ctx.plugin(MemorySettings, { doc: { 'dsh-apply-patch': userDoc } })
   await ctx.plugin(applyObservationPolicy)
+  // dsh >= 0.1.7 wiring: the mode rides this entry's config, resolved through
+  // the plugin's Config schema exactly as the loader does it (that resolution is
+  // what turns `mode` into a live volatile handle).
   await ctx.plugin({
     name: 'dsh-apply-patch',
-    inject: ['tools', 'fs', 'systemPrompt', 'settings', 'sandboxPolicy'],
-    apply: applyPlugin,
-  })
+    inject: ['tools', 'fs', 'systemPrompt', 'sandboxPolicy'],
+    apply: (pluginCtx: Context) => applyPlugin(pluginCtx, ApplyPatchSettingsSchema(entryConfig) as never),
+  } as never)
   return ctx
 }
 
@@ -106,45 +91,70 @@ describe('plugin apply', () => {
 
   })
 
-  it('registers the settings namespace', async () => {
-    const ctx = await boot(workspace, 'workspace-write', {})
-    const describe = (ctx.get('settings') as SettingsProvider).describe()
-    const ns = describe.find((d) => d.ns === 'dsh-apply-patch')
-    assert.ok(ns !== undefined, 'dsh-apply-patch namespace served')
-    assert.equal((ns.value as { mode: string }).mode, 'gpt-only')
-
+  it('reads the mode out of the entry config, volatile handle included', async () => {
+    // dsh >= 0.1.7 hands a `volatile()` field to apply() as a LIVE HANDLE
+    // (`{ get() }`, non-enumerable, JSON `{}`), never as the value. Reading
+    // `config.mode` directly therefore collapsed every choice to the handle
+    // object and the settings dropdown had no effect ("off" / "all" both fell
+    // through to the gpt-only branch of shouldOfferTool).
+    const resolved = ApplyPatchSettingsSchema({ mode: 'all' }) as unknown as { mode: unknown }
+    assert.equal(typeof resolved.mode, 'object', 'the schema wraps the field in a cell')
+    assert.ok(
+      Symbol.for('cosmokit.volatile.write') in (resolved.mode as object),
+      'the cell carries cosmokit\'s registered symbol',
+    )
+    assert.equal(readMode(resolved as never), 'all', 'cell is unwrapped')
+    // Plain values (hand-built patches, hosts that resolve the config without
+    // the volatile wrapper) and absent/invalid values keep working.
+    assert.equal(readMode({ mode: 'off' } as never), 'off')
+    assert.equal(readMode(undefined), 'gpt-only')
+    assert.equal(readMode({ mode: 'nonsense' } as never), 'gpt-only')
   })
 })
 
 describe('conditional injection', () => {
+  /**
+   * Drive the REAL system-prompt/assemble waterfall with a synthetic assembly.
+   *
+   * The composed test context mounts no prompt tool list (that wiring lives in
+   * plugins this scaffold does not boot), so `systemPrompt.assemble()` returns
+   * an empty tool list and could not tell the modes apart. Emitting the
+   * waterfall with one apply_patch tool in the assembly exercises the plugin's
+   * own hook — which is what decides whether the tool survives.
+   */
+  async function assembleTools(ctx: Context, model: string | undefined): Promise<string[]> {
+    const assembly = {
+      tools: [{ name: APPLY_PATCH_TOOL_NAME }],
+      variables: model === undefined ? {} : { model },
+    }
+    const out = await ctx.waterfall(
+      'system-prompt/assemble',
+      assembly as never,
+      { agent: undefined } as never,
+      () => Promise.resolve(assembly as never),
+    )
+    return (out as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)
+  }
+
   it('drops the tool when mode is off', async () => {
     const ctx = await boot(workspace, 'workspace-write', { mode: 'off' })
-    const assembly = await ctx.systemPrompt.assemble({ scope: undefined, agent: undefined })
-    assert.ok(!assembly.tools.some((t) => t.name === APPLY_PATCH_TOOL_NAME))
-
+    assert.deepEqual(await assembleTools(ctx, 'gpt-4.1'), [])
   })
 
   it('keeps the tool for gpt models in gpt-only mode', async () => {
     const ctx = await boot(workspace, 'workspace-write', { mode: 'gpt-only' })
-    // Simulate a captured route: the agent/request hook fills the cache; we
-    // can't easily drive a real loop here, so verify the pure decision +
-    // assembly with a gpt model via the default-selection fallback path.
-    const assembly = await ctx.systemPrompt.assemble({ scope: undefined, agent: undefined })
-    // The default selection in this test context is undefined -> falls to the
-    // agentDefaultModel tier, also undefined -> gpt-only hides the tool.
-    assert.ok(!assembly.tools.some((t) => t.name === APPLY_PATCH_TOOL_NAME))
-    // Pure decision: gpt models DO get it.
+    assert.deepEqual(await assembleTools(ctx, 'gpt-4.1'), [APPLY_PATCH_TOOL_NAME])
+    assert.deepEqual(await assembleTools(ctx, 'deepseek-v4'), [])
+    // Pure decision stays covered too.
     assert.equal(shouldOfferTool('gpt-only', 'gpt-4.1'), true)
     assert.equal(shouldOfferTool('gpt-only', 'o3-mini'), false)
     assert.equal(shouldOfferTool('gpt-only', 'deepseek-v4'), false)
-
   })
 
   it('keeps the tool for every model in all mode', async () => {
     const ctx = await boot(workspace, 'workspace-write', { mode: 'all' })
-    const assembly = await ctx.systemPrompt.assemble({ scope: undefined, agent: undefined })
-    assert.ok(assembly.tools.some((t) => t.name === APPLY_PATCH_TOOL_NAME))
-
+    assert.deepEqual(await assembleTools(ctx, 'deepseek-v4'), [APPLY_PATCH_TOOL_NAME])
+    assert.deepEqual(await assembleTools(ctx, undefined), [APPLY_PATCH_TOOL_NAME])
   })
 })
 

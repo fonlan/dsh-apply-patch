@@ -3,9 +3,10 @@
  *
  * One namespace, one field: `mode` — when the `apply_patch` tool is injected
  * into a session's toolset. Both halves (host + client) key off the same
- * strings.
+ * strings, so this file stays free of any schemastery import (the client bundle
+ * purity gate and the client tsconfig both rely on that): the Config schema the
+ * host validates with lives in `src/host/settings-schema.ts`.
  */
-import z from '@deepseek-ai/schemastery'
 import {
   APPLY_PATCH_SETTINGS_NS,
   DEFAULT_INJECTION_MODE,
@@ -15,11 +16,6 @@ import {
 
 export { APPLY_PATCH_SETTINGS_NS, DEFAULT_INJECTION_MODE, INJECTION_MODES }
 export type { InjectionMode }
-
-/** Settings document schema: the single dropdown field. */
-export const ApplyPatchSettingsSchema = z.object({
-  mode: z.union([...INJECTION_MODES]).default(DEFAULT_INJECTION_MODE),
-})
 
 /** Resolved settings document shape. */
 export interface ApplyPatchSettings {

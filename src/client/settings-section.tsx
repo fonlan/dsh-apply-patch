@@ -4,33 +4,53 @@
  * Registers into the settings.section slot, so the page owns one entry in the
  * settings sidebar and renders in the panel's content column. Content: one
  * dropdown (关闭 / 仅GPT模型 / 所有模型) reading and writing the
- * dsh-apply-patch settings namespace through the bound settings scope — the
- * same transport the built-in settings pages use, so a change here is live
- * for the next request.
+ * `dsh-apply-patch` entry config through the client `configForms` scope — the
+ * same transport the built-in settings pages use, so a change here restarts
+ * the host entry with the new mode.
  */
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 type ClientContext = Context
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import { INJECTION_MODES, type InjectionMode } from '../shared/constants'
+import { DEFAULT_INJECTION_MODE, INJECTION_MODES, type InjectionMode } from '../shared/constants'
 import { LOCALE_NS } from './locales'
 import './settings-section.css'
 
-/** Client settings scope face (subset of the app client modules). */
-export interface SettingsScopeFace {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'unavailable'
-    writable: boolean
-    value?: { mode?: InjectionMode } | undefined
-  }
+/** One write in the client config-form protocol (`settings/mutate` ops). */
+export type ConfigFormOp =
+  | { op: 'set'; path: string[]; value: unknown }
+  | { op: 'unset'; path: string[] }
+
+/** Snapshot of one bound client config form. */
+export interface ConfigFormSnapshot {
+  status?: string
+  writable: boolean
+  /** Effective document (the stored override merged over the composition default). */
+  value?: { mode?: InjectionMode } | undefined
+  /** Optimistic-concurrency revision this read is based on. */
+  revision?: unknown
+  [key: string]: unknown
+}
+
+/**
+ * Bound client config form — the `configForms.get(<entry id>)` scope.
+ *
+ * dsh 0.1.7 replaced the old `settingsScope` service with `configForms`: the
+ * scope is bound by entry id (not namespace) and writes ride
+ * `mutate(ops, revision)` instead of `set(field, value)`. Declared structurally
+ * because this package's devDependency typings predate it; keep in sync with
+ * the `configForms` scope the official settings pages bind.
+ */
+export interface ConfigFormScopeFace {
+  getSnapshot(): ConfigFormSnapshot
   subscribe(listener: () => void): () => void
-  set(field: string, value: unknown): Promise<void>
-  unset(field: string): Promise<void>
+  /** @returns false when the write was rejected as stale (revision moved on). */
+  mutate(ops: ConfigFormOp[], revision?: unknown): Promise<boolean>
 }
 
 export interface SettingsSectionProps {
-  /** The bound dsh-apply-patch settings scope (from the slot entry's inject face). */
-  scope: SettingsScopeFace
+  /** The bound dsh-apply-patch config form (from the slot entry's inject face). */
+  scope: ConfigFormScopeFace
 }
 
 /** Label lookup for the three modes. */
@@ -59,14 +79,18 @@ export function makeSettingsSection(ctx: ClientContext): (props: SettingsSection
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const current: InjectionMode = snapshot.value?.mode ?? 'gpt-only'
+    const current: InjectionMode = snapshot.value?.mode ?? DEFAULT_INJECTION_MODE
 
     const changeMode = useCallback(async (next: InjectionMode) => {
       setBusy(true)
       setError(null)
       setSaved(false)
       try {
-        await scope.set('mode', next)
+        // Write against the revision this render was based on: the host rejects a
+        // stale write instead of silently overwriting a concurrent change.
+        const revision = scope.getSnapshot().revision
+        const landed = await scope.mutate([{ op: 'set', path: ['mode'], value: next }], revision)
+        if (!landed) throw new Error(t('saveConflict'))
         setSaved(true)
       } catch (cause) {
         setError(t('saveFailed', { message: cause instanceof Error ? cause.message : String(cause) }))

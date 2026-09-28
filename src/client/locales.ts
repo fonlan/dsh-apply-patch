@@ -15,6 +15,7 @@ export const zh = {
   saving: '保存中…',
   saved: '已保存',
   saveFailed: '保存失败：{message}',
+  saveConflict: '配置已被其他改动更新，请重试。',
   readOnly: '当前部署为只读，无法修改配置。',
 } as const
 
@@ -30,5 +31,6 @@ export const en = {
   saving: 'Saving…',
   saved: 'Saved',
   saveFailed: 'Failed to save: {message}',
+  saveConflict: 'Configuration changed elsewhere; try again.',
   readOnly: 'This deployment is read-only; configuration cannot be changed.',
 } as const

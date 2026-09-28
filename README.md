@@ -12,7 +12,7 @@ GPT 系列模型在训练时大量使用 OpenAI Codex 的 `apply_patch` 工具�
   - **关闭**：完全不注入 `apply_patch`
   - **仅GPT模型**（默认）：只对模型 id 以 `gpt-` 开头的模型注入
   - **所有模型**：对所有模型注入
-- **设置卡片**：设置 → 插件 → 插件配置 → Apply Patch，实时生效（live）。
+- **设置卡片**：设置 → 插件 → 插件配置 → Apply Patch；选择写进本插件条目的 entry config，改动会重启该条目随即生效。
 
 ## 安装
 
@@ -41,7 +41,7 @@ pnpm build
 dsh plugin --profile web add .
 ```
 
-安装后插件通过 `cordis.patch.yml` 自动挂载：服务端注册 `apply_patch` 工具与 `dsh-apply-patch` 设置命名空间，web 端注册 `settings.plugin.item` 设置卡片（设置 → 插件 → 插件配置 → Apply Patch）。**安装后需要重启 dsh web 进程生效**。
+安装后插件通过 `cordis.patch.yml` 自动挂载：服务端注册 `apply_patch` 工具，注入范围来自本插件条目的 entry config（由插件 `Config` schema 声明，dsh ≥ 0.1.7 据此生成设置表单），web 端注册 `settings.section` 设置页（设置 → 插件 → 插件配置 → Apply Patch）。**安装后需要重启 dsh web 进程生效**。
 
 ### 删除插件
 
@@ -95,7 +95,7 @@ D /path/to/old.py
 
 ## 工作原理
 
-1. 通过 `ctx.settings.register` 注册 `dsh-apply-patch` 命名空间（单字段 `mode`）。
+1. 通过插件 `Config`（schemastery schema，单字段 `mode`）声明注入范围：dsh ≥ 0.1.7 用它生成设置表单，并把选择写进本条目 entry config；`mode` 标记为 `volatile()`，因此 `apply()` 拿到的是实时句柄，每次组装工具列表时重新读取，改设置无需重启会话。
 2. 通过 `ctx.tools.register` 注册 `apply_patch` 工具（`defineTool`）。
 3. 挂钩 `system-prompt/assemble` 瀑布：组装工具列表时，按 `mode` + 当前会话模型决定是否保留 `apply_patch`。
 4. 模型判定优先读取组装变量中的 `variables.model`（模型选择层注入的权威值，切换模型零延迟），回退到 `agent/request` 捕获的已解析路由、会话请求头、`agentDefaultModel` 默认值。
