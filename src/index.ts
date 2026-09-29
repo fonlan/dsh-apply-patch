@@ -16,7 +16,11 @@ import {
   type ApplyPatchSettings,
   type InjectionMode,
 } from './shared/config.js'
-import { ApplyPatchSettingsSchema } from './host/settings-schema.js'
+import {
+  ApplyPatchSettingsSchema,
+  type LiveSettingsField,
+  type ResolvedApplyPatchSettings,
+} from './host/settings-schema.js'
 import { registerApplyPatchTool, type ToolFaces } from './host/tool.js'
 import { installInjector, shouldOfferTool } from './host/injector.js'
 
@@ -31,18 +35,15 @@ export const inject = [
 
 // The plugin's Config is the settings form: dsh >= 0.1.7 derives the settings
 // page from this schema, and a config change restarts the entry, so `apply`
-// always sees the current mode.
+// always sees the current mode. Its resolved shape is
+// `ResolvedApplyPatchSettings` — `mode` arrives as a live volatile handle, not
+// as the plain value `ApplyPatchSettings` describes.
 export const Config = ApplyPatchSettingsSchema
 
 /** Session cwd helper: the agent's workspace root. */
 function sessionCwd(exec: { agent?: { session?: { header?: { cwd?: string } } } }): string | undefined {
   const cwd = exec.agent?.session?.header?.cwd
   return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
-}
-
-/** Live handle schemastery wraps around one `volatile()` config field. */
-interface VolatileField<T> {
-  get(): T
 }
 
 /**
@@ -55,7 +56,7 @@ interface VolatileField<T> {
 const VOLATILE_WRITE = Symbol.for('cosmokit.volatile.write')
 
 /** Whether a resolved config field is a live volatile cell rather than its value. */
-function isVolatileCell(value: unknown): value is VolatileField<unknown> {
+function isVolatileCell(value: unknown): value is LiveSettingsField<unknown> {
   if (typeof value !== 'object' || value === null) return false
   return VOLATILE_WRITE in value || typeof (value as { get?: unknown }).get === 'function'
 }
@@ -70,17 +71,21 @@ function isVolatileCell(value: unknown): value is VolatileField<unknown> {
  * "all" choices made on the settings page (or in the profile patch) were
  * ignored. The cell is read on every call so a settings edit takes effect
  * without re-registering the tool.
- * @param config - the entry config this host half was applied with.
+ * @param config - the entry config this host half was applied with, either in
+ * the schema's resolved shape (`ResolvedApplyPatchSettings`, `mode` a live
+ * handle) or as a hand-written plain `ApplyPatchSettings` document.
  * @returns the current mode, or the composition default for anything unusable.
  */
-export function readMode(config: ApplyPatchSettings | undefined): InjectionMode {
+export function readMode(
+  config: ResolvedApplyPatchSettings | ApplyPatchSettings | undefined,
+): InjectionMode {
   const field = (config as { mode?: unknown } | undefined)?.mode
   if (field === undefined || field === null) return DEFAULT_INJECTION_MODE
   const value = isVolatileCell(field) ? field.get() : field
   return INJECTION_MODES.includes(value as InjectionMode) ? (value as InjectionMode) : DEFAULT_INJECTION_MODE
 }
 
-export function apply(ctx: Context, config: ApplyPatchSettings): void {
+export function apply(ctx: Context, config: ResolvedApplyPatchSettings): void {
   // 1. Injection scope comes from the entry config (settings page / patch yaml):
   // the mode is re-read from the live volatile handle on every request.
   const mode = () => readMode(config)
@@ -117,4 +122,4 @@ export function apply(ctx: Context, config: ApplyPatchSettings): void {
 }
 
 export { ApplyPatchSettingsSchema, APPLY_PATCH_SETTINGS_NS, shouldOfferTool }
-export type { ApplyPatchSettings, InjectionMode }
+export type { ApplyPatchSettings, ResolvedApplyPatchSettings, InjectionMode }

@@ -61,7 +61,18 @@ function fakeExec(ctx: Context, cwd: string, signal = new AbortController().sign
     signal,
     agent: {
       id: 'test-agent',
-      session: { header: { cwd }, events: [] },
+      // dsh 0.2.0's session projections (sandboxPolicy.resolve reads the
+      // session's `sandboxMode` cell) fold `session.snapshotEvents()` and
+      // advance over `seq` / `eventAt`, so the fake carries that surface.
+      // `events` stays for the pre-0.1.7 shape.
+      session: {
+        header: { cwd },
+        events: [],
+        inheritedEventCount: 0,
+        seq: 0,
+        snapshotEvents: () => [],
+        eventAt: () => undefined,
+      },
     },
   } as never
 }

@@ -319,11 +319,18 @@ async function deleteViaShell(
   }
   // The process path comes from the fs backend (same execution world).
   const processPath = caps.fs.processPath(target)
-  const result = await shell.run(shell.resolve({
+  // The seam has no one-shot `run(request)`: `resolve()` turns the request into
+  // a fully-resolved spec, `execute(spec)` prepares and spawns it, and the
+  // handle's foreground projection `result()` settles with the run outcome.
+  // Both are abstract on `ShellExecutor` and identical in dsh 0.1.7-rc.2 and
+  // 0.2.0-rc.1; only `result()` carries `exitCode` / `signal` / `sandbox`.
+  const spec = shell.resolve({
     command: `rm -- ${shellQuote(processPath)}`,
     sandboxPolicy: policy,
     signal,
-  }))
+  })
+  const execution = await shell.execute(spec)
+  const result = await execution.result()
   if (result.sandbox?.denied) {
     throw new ApplyError(
       `[sandbox: file access denied under ${result.sandbox.mode} mode] ` +
