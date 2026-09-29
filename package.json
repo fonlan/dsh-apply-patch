@@ -1,6 +1,6 @@
 {
   "name": "@fonlan/dsh-apply-patch",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "DSH plugin: a codex-style apply_patch tool (*** Begin Patch / *** Update File / *** Add File / *** Delete File) injected into the model toolset through DSH's built-in sandbox, with a settings card to choose injection scope (off / GPT models only / all models).",
   "license": "MIT",
   "repository": {
